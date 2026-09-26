@@ -19,17 +19,17 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def load_net(model: str, device: torch.device) -> torch.nn.Module:
+def load_net(model: str, device: torch.device, ckpt: tt.Optional[str] = None) -> torch.nn.Module:
     env = gym.make("CartPole-v1")
     obs_size = env.observation_space.shape[0]
     n_actions = env.action_space.n
     env.close()
     if model == "dueling":
         net: torch.nn.Module = DuelingDQN(obs_size, n_actions)
-        ckpt = f"checkpoints/{DUELING_NAME}.pt"
+        ckpt = ckpt or f"checkpoints/{DUELING_NAME}.pt"
     else:
         net = CartPoleDQN(obs_size, n_actions)
-        ckpt = f"checkpoints/{BASE_NAME}.pt"
+        ckpt = ckpt or f"checkpoints/{BASE_NAME}.pt"
     net.load_state_dict(torch.load(ckpt, map_location=device, weights_only=True))
     net.to(device)
     net.eval()
@@ -37,8 +37,9 @@ def load_net(model: str, device: torch.device) -> torch.nn.Module:
 
 
 @torch.no_grad()
-def evaluate(model: str, episodes: int, device: torch.device) -> tt.Dict[str, float]:
-    net = load_net(model, device)
+def evaluate(model: str, episodes: int, device: torch.device,
+             ckpt: tt.Optional[str] = None) -> tt.Dict[str, float]:
+    net = load_net(model, device, ckpt)
     env = gym.make("CartPole-v1")
     rewards = []
     for _ in range(episodes):
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt", default=None, help="Ruta alternativa al .pt")
     args = parser.parse_args()
     device = get_device()
-    stats = evaluate(args.model, args.episodes, device)
+    stats = evaluate(args.model, args.episodes, device, ckpt=args.ckpt)
     print(f"model={args.model} episodes={args.episodes} "
           f"mean={stats['mean']:.1f} std={stats['std']:.1f} "
           f"min={stats['min']:.0f} max={stats['max']:.0f}")

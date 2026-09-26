@@ -25,6 +25,8 @@ python train_mejorado.py
 # Evaluar checkpoints (greedy, sin exploracion)
 python eval_cartpole.py --model base --episodes 20
 python eval_cartpole.py --model dueling --episodes 20
+# Evaluar un checkpoint concreto (fix: --ckpt ya no se ignora)
+python eval_cartpole.py --model base --episodes 20 --ckpt checkpoints/01_baseline_cartpole_seed42.pt
 # TensorBoard
 tensorboard --logdir runs
 # Regenerar grafica
@@ -35,8 +37,10 @@ python plot_results.py  # -> results/reward_curve.png
 - `results/rewards_mejorado.csv`: 19933 episodios del run Dueling completo (columnas `episode,reward`).
 - `results/reward_curve.png`: curva de recompensa + media movil 100 (generada con `plot_results.py`).
 - `checkpoints/01_baseline_cartpole.pt` (5.7K) y `checkpoints/06_dueling_cartpole.pt` (72K): pesos smoke-test de 30 iteraciones para validar el pipeline (re-entrenar completo para pesos finales `stop_reward=475`).
+- Seed 42 (26-sep-2026): base resolvio en 1237 episodios (`results/rewards_base_seed42.csv`, media ult100 463.5, `checkpoints/01_baseline_cartpole_seed42.pt`); dueling seed42 quedo interrumpido en 558 episodios (media ult100 423.4) y se relanzo en background a `checkpoints/06_dueling_cartpole_seed42.pt`. Comparacion parcial: `results/comparacion_seed42_partial.png` (umbral media100>=300: base ep 204, dueling ep 238).
 - `runs/`: logs TensorBoard por corrida (`cartpole-01_*`, `dueling-06_*`).
-- Eval smoke (5 episodios, pesos iniciales): base `mean≈10`, dueling `mean≈9.4` — esperado antes de convergencia.
+- Eval smoke (20 episodios, pesos iniciales): base `mean≈10.0`, dueling `mean≈9.6` — esperado antes de convergencia.
+- Eval base seed42 (entrenado, greedy 20 eps): `mean≈326.2 std≈27.4 min=264 max=377` — mejora clara pero aun bajo `stop_reward=475` en greedy.
 
 ## Estructura
 ```
