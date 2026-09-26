@@ -1,53 +1,70 @@
-# Tarea DQN — CartPole-v1 (DQN base vs Dueling DQN)
+# Tarea DQN: Baseline vs Dueling en CartPole-v1
 
-## Descripcion y objetivo
-Proyecto de Deep Q-Network sobre `CartPole-v1` (gymnasium) con `ptan` + PyTorch + ignite.
-- `train_base.py` (`01_baseline_cartpole`): DQN fully-connected (obs 4 → 128 → ReLU → 2 acciones).
-- `train_mejorado.py` (`06_dueling_cartpole`): Dueling DQN (feature 128 + streams Valor `V(s)` y Ventaja `A(s,a)`, `Q = V + (A - mean(A))`).
-- `lib/dqn_model.py`: DQN convolucional Atari (`Conv2d`, normalizacion `x/255.0`).
-- `lib/dqn_extra.py`: NoisyDQN, DuelingDQN conv, DistributionalDQN, RainbowDQN, `PrioReplayBuffer`, `distr_projection`.
-- `lib/common.py`: `calc_loss_dqn`, `EpsilonTracker`, `batch_generator`, `setup_ignite` (TensorBoard + `EndOfEpisodeHandler` con `stop_reward=475.0`).
+Comparación de DQN clásico (`train_base.py`) contra DQN con red Dueling
+(`train_mejorado.py`) en `CartPole-v1`, con 3 semillas y gráficas comparativas (`plots.py`).
 
-## Instalacion
+## Componente Rainbow elegido: Dueling Network
+
+`train_mejorado.py` implementa **Dueling DQN** (`class DuelingDQN`): separa la
+estimación de Q en dos streams, valor del estado `V(s)` y ventaja `A(s,a)`:
+
+```
+Q(s, a) = V(s) + (A(s, a) - mean_a A(s, a))
+```
+
+**Justificación:** en CartPole muchas observaciones consecutivas comparten el
+mismo valor (el poste sigue en pie) y lo único que importa es la ventaja
+relativa de mover izquierda vs derecha. Aprender `V(s)` por separado reduce la
+varianza de los targets y acelera la convergencia frente al MLP monolítico del
+baseline. El resto del algoritmo no cambia (loss MSE a 1 paso, target net,
+epsilon-greedy, replay buffer), así que la comparación aísla el efecto de la
+arquitectura.
+
+## Hiperparámetros finales
+
+Idénticos en base y mejorado (solo cambia la red):
+
+| Hiperparámetro      | Valor        |
+|---------------------|--------------|
+| Entorno             | CartPole-v1  |
+| Learning rate       | 1e-3 (Adam)  |
+| Batch size          | 32           |
+| Gamma               | 0.99         |
+| Replay size         | 10 000       |
+| Replay initial      | 1 000        |
+| Target net sync     | cada 100 frames |
+| Epsilon             | 1.0 → 0.02 en 5 000 frames |
+| Stop reward         | 475.0        |
+| Max frames          | 200 000      |
+| Red base            | MLP obs → 128 → ReLU → Q |
+| Red mejorada        | Dueling: 128 compartidas + V(64→1) + A(64→n_acc) |
+
+## Semillas utilizadas
+
+`42`, `123`, `2024` — fijan `random`, `numpy`, `torch` y el entorno
+(`env_seed` + `action_space.seed`). Cada corrida genera
+`results/reward_{base,mejorado}_seed{seed}.csv` y su checkpoint
+`checkpoints/dqn_{base,dueling}_cartpole_seed{seed}.pt`.
+
+## Reproducir los experimentos
+
 ```bash
-git clone <repo> && cd APR/Tarea_DQN
-python3 -m venv ~/gym
-source ~/gym/bin/activate
-pip install -r requirements.txt
+cd Tarea_DQN
+
+# Baseline (3 semillas)
+python3 train_base.py --seed 42
+python3 train_base.py --seed 123
+python3 train_base.py --seed 2024
+
+# Mejorado Dueling (3 semillas)
+python3 train_mejorado.py --seed 42
+python3 train_mejorado.py --seed 123
+python3 train_mejorado.py --seed 2024
+
+# Graficas comparativas + tabla (metricas, base, mejorado)
+python3 plots.py
 ```
 
-## Ejecucion
-```bash
-# Entrenar base (DQN)
-python train_base.py
-# Entrenar mejorado (Dueling, guarda results/rewards_mejorado.csv)
-python train_mejorado.py
-# Evaluar checkpoints (greedy, sin exploracion)
-python eval_cartpole.py --model base --episodes 20
-python eval_cartpole.py --model dueling --episodes 20
-# Evaluar un checkpoint concreto (fix: --ckpt ya no se ignora)
-python eval_cartpole.py --model base --episodes 20 --ckpt checkpoints/01_baseline_cartpole_seed42.pt
-# TensorBoard
-tensorboard --logdir runs
-# Regenerar grafica
-python plot_results.py  # -> results/reward_curve.png
-```
-
-## Resultados
-- `results/rewards_mejorado.csv`: 19933 episodios del run Dueling completo (columnas `episode,reward`).
-- `results/reward_curve.png`: curva de recompensa + media movil 100 (generada con `plot_results.py`).
-- `checkpoints/01_baseline_cartpole.pt` (5.7K) y `checkpoints/06_dueling_cartpole.pt` (72K): pesos smoke-test de 30 iteraciones para validar el pipeline (re-entrenar completo para pesos finales `stop_reward=475`).
-- Seed 42 (26-sep-2026): base resolvio en 1237 episodios (`results/rewards_base_seed42.csv`, media ult100 463.5, `checkpoints/01_baseline_cartpole_seed42.pt`); dueling seed42 quedo interrumpido en 558 episodios (media ult100 423.4) y se relanzo en background a `checkpoints/06_dueling_cartpole_seed42.pt`. Comparacion parcial: `results/comparacion_seed42_partial.png` (umbral media100>=300: base ep 204, dueling ep 238).
-- `runs/`: logs TensorBoard por corrida (`cartpole-01_*`, `dueling-06_*`).
-- Eval smoke (20 episodios, pesos iniciales): base `mean≈10.0`, dueling `mean≈9.6` — esperado antes de convergencia.
-- Eval base seed42 (entrenado, greedy 20 eps): `mean≈326.2 std≈27.4 min=264 max=377` — mejora clara pero aun bajo `stop_reward=475` en greedy.
-
-## Estructura
-```
-Tarea_DQN/
-  train_base.py  train_mejorado.py  eval_cartpole.py  plot_results.py
-  requirements.txt  README.md
-  lib/common.py  lib/dqn_model.py  lib/dqn_extra.py
-  results/rewards_mejorado.csv  results/reward_curve.png
-  checkpoints/*.pt  runs/
-```
+Salidas en `results/`: `comparacion_seed{42,123,2024}.png`,
+`comparacion_promedio.png` y `tabla_comparativa.csv` (reward final medio de las
+últimas 100 ep, desviación estándar y episodio del primer reward ≥ 475).
