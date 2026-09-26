@@ -117,6 +117,7 @@ def train(params: Hyperparams, device: torch.device, _: dict,
     csv_writer.writerow(["episode", "reward"])
 
     episode_count = 0
+    ckpt_file = ckpt_path or f"checkpoints/{NAME}.pt"
 
     def process_batch(engine: Engine, batch: tt.List[ptan.experience.ExperienceFirstLast]) -> dict:
         optimizer.zero_grad()
@@ -144,6 +145,8 @@ def train(params: Hyperparams, device: torch.device, _: dict,
         episode_count += 1
         csv_writer.writerow([episode_count, trainer.state.episode_reward])
         csv_file.flush()
+        if episode_count % 200 == 0:
+            torch.save(net.state_dict(), ckpt_file)
     try:
         r = engine.run(
             common.batch_generator(buffer, params.replay_initial, params.batch_size)
@@ -152,7 +155,7 @@ def train(params: Hyperparams, device: torch.device, _: dict,
         csv_file.close()
 
     os.makedirs("checkpoints", exist_ok=True)
-    torch.save(net.state_dict(), ckpt_path or f"checkpoints/{NAME}.pt")
+    torch.save(net.state_dict(), ckpt_file)
     if getattr(r, "solved", False):
         return r.episode
     return None
