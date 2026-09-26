@@ -1,0 +1,10 @@
+seed,metrica,base,mejorado
+42,Reward final medio (ultimas 100 ep),128.2,170.7
+42,Desviacion estandar,118.4,107.4
+42,Episodio primer reward >= 475,168,161
+123,Reward final medio (ultimas 100 ep),227.2,232.4
+123,Desviacion estandar,43.7,64.7
+123,Episodio primer reward >= 475,221,276
+2024,Reward final medio (ultimas 100 ep),129.8,157.7
+2024,Desviacion estandar,137.6,92.8
+2024,Episodio primer reward >= 475,157,151
