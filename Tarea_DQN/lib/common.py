@@ -1,5 +1,6 @@
 import random
 import argparse
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -179,8 +180,8 @@ def setup_ignite(
         trainer.should_terminate = True
         trainer.state.solved = True
 
-    now = datetime.now().isoformat(timespec='minutes').replace(':', '')
-    logdir = f"runs/{now}-{params.run_name}-{run_name}"
+    now = datetime.now().isoformat(timespec='seconds').replace(':', '')
+    logdir = f"runs/{now}-pid{os.getpid()}-{params.run_name}-{run_name}"
     tb = tb_logger.TensorboardLogger(log_dir=logdir)
     run_avg = RunningAverage(output_transform=lambda v: v['loss'])
     run_avg.attach(engine, "avg_loss")
