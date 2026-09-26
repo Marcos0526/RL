@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+import argparse
+import csv
 from dataclasses import dataclass
 import gymnasium as gym
 import ptan
+import ptan.ignite
 import typing as tt
 
 import torch
@@ -53,7 +56,19 @@ def make_env() -> gym.Env:
     return gym.make("CartPole-v1")
 
 
-def train(params: Hyperparams, device: torch.device, _: dict) -> tt.Optional[int]:
+def set_seeds(seed: int) -> None:
+    import random
+    import numpy as np
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
+def train(params: Hyperparams, device: torch.device, _: dict,
+          csv_path: str = "results/rewards_base.csv",
+          ckpt_path: tt.Optional[str] = None,
+          seed: int = 123) -> tt.Optional[int]:
+    set_seeds(seed)
     # Instanciamos el entorno usando make_env()
     env = make_env()
 
@@ -72,13 +87,19 @@ def train(params: Hyperparams, device: torch.device, _: dict) -> tt.Optional[int
 
     # 3. Experience Source con steps_count=1 explícito
     exp_source = ptan.experience.ExperienceSourceFirstLast(
-        env, agent, gamma=params.gamma, steps_count=1
+        env, agent, gamma=params.gamma, steps_count=1, env_seed=seed
     )
     
     buffer = ptan.experience.ExperienceReplayBuffer(
         exp_source, buffer_size=params.replay_size
     )
     optimizer = optim.Adam(net.parameters(), lr=params.learning_rate)
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    csv_file = open(csv_path, mode="w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["episode", "reward"])
+    episode_count = 0
 
     def process_batch(engine: Engine, batch: tt.List[ptan.experience.ExperienceFirstLast]) -> dict:
         optimizer.zero_grad()
@@ -99,11 +120,22 @@ def train(params: Hyperparams, device: torch.device, _: dict) -> tt.Optional[int
 
     engine = Engine(process_batch)
     common.setup_ignite(engine, params, exp_source, NAME)
-    r = engine.run(
-        common.batch_generator(buffer, params.replay_initial, params.batch_size)
-    )
+
+    @engine.on(ptan.ignite.EpisodeEvents.EPISODE_COMPLETED)
+    def log_csv(trainer: Engine) -> None:
+        nonlocal episode_count
+        episode_count += 1
+        csv_writer.writerow([episode_count, trainer.state.episode_reward])
+        csv_file.flush()
+
+    try:
+        r = engine.run(
+            common.batch_generator(buffer, params.replay_initial, params.batch_size)
+        )
+    finally:
+        csv_file.close()
     os.makedirs("checkpoints", exist_ok=True)
-    torch.save(net.state_dict(), f"checkpoints/{NAME}.pt")
+    torch.save(net.state_dict(), ckpt_path or f"checkpoints/{NAME}.pt")
     if getattr(r, "solved", False):
         return r.episode
     return None
@@ -118,11 +150,11 @@ def get_device() -> torch.device:
 
 
 if __name__ == "__main__":
-    import random
-    import numpy as np
-    random.seed(common.SEED)
-    np.random.seed(common.SEED)
-    torch.manual_seed(common.SEED)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seed", type=int, default=123)
+    ap.add_argument("--csv", default="results/rewards_base.csv")
+    ap.add_argument("--ckpt", default=None)
+    args = ap.parse_args()
     params = Hyperparams()
     device = get_device()
-    train(params, device, {})
+    train(params, device, {}, csv_path=args.csv, ckpt_path=args.ckpt, seed=args.seed)

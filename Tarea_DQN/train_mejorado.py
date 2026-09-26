@@ -74,7 +74,19 @@ def make_env() -> gym.Env:
     return gym.make("CartPole-v1")
 
 
-def train(params: Hyperparams, device: torch.device, _: dict) -> tt.Optional[int]:
+def set_seeds(seed: int) -> None:
+    import random
+    import numpy as np
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
+def train(params: Hyperparams, device: torch.device, _: dict,
+          csv_path: str = "results/rewards_mejorado.csv",
+          ckpt_path: tt.Optional[str] = None,
+          seed: int = 123) -> tt.Optional[int]:
+    set_seeds(seed)
     env = make_env()
 
     obs_size = env.observation_space.shape[0]
@@ -90,7 +102,7 @@ def train(params: Hyperparams, device: torch.device, _: dict) -> tt.Optional[int
     agent = ptan.agent.DQNAgent(net, selector, device=device)
 
     exp_source = ptan.experience.ExperienceSourceFirstLast(
-        env, agent, gamma=params.gamma, steps_count=1
+        env, agent, gamma=params.gamma, steps_count=1, env_seed=seed
     )
     
     buffer = ptan.experience.ExperienceReplayBuffer(
@@ -99,9 +111,8 @@ def train(params: Hyperparams, device: torch.device, _: dict) -> tt.Optional[int
     optimizer = optim.Adam(net.parameters(), lr=params.learning_rate)
 
     # Configuración de guardado de CSV
-    os.makedirs("results", exist_ok=True)
-    csv_file_path = os.path.join("results", "rewards_mejorado.csv")
-    csv_file = open(csv_file_path, mode="w", newline="")
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    csv_file = open(csv_path, mode="w", newline="")
     csv_writer = csv.writer(csv_file)
     csv_writer.writerow(["episode", "reward"])
 
@@ -141,7 +152,7 @@ def train(params: Hyperparams, device: torch.device, _: dict) -> tt.Optional[int
         csv_file.close()
 
     os.makedirs("checkpoints", exist_ok=True)
-    torch.save(net.state_dict(), f"checkpoints/{NAME}.pt")
+    torch.save(net.state_dict(), ckpt_path or f"checkpoints/{NAME}.pt")
     if getattr(r, "solved", False):
         return r.episode
     return None
@@ -156,11 +167,12 @@ def get_device() -> torch.device:
 
 
 if __name__ == "__main__":
-    import random
-    import numpy as np
-    random.seed(common.SEED)
-    np.random.seed(common.SEED)
-    torch.manual_seed(common.SEED)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seed", type=int, default=123)
+    ap.add_argument("--csv", default="results/rewards_mejorado.csv")
+    ap.add_argument("--ckpt", default=None)
+    args = ap.parse_args()
     params = Hyperparams()
     device = get_device()
-    train(params, device, {})
+    train(params, device, {}, csv_path=args.csv, ckpt_path=args.ckpt, seed=args.seed)
